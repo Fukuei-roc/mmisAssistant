@@ -31,8 +31,8 @@ npx playwright install chromium
 Create/update `.env`:
 
 ```env
-USERNAME=0776273
-PASSWORD=C@de1128
+USERNAME=your_username
+PASSWORD=your_password
 HEADLESS=false
 PORT=3000
 TIMEOUT_MS=30000
