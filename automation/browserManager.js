@@ -1,8 +1,12 @@
 const { chromium } = require('playwright');
 
-async function launchBrowser({ headless }) {
+async function launchBrowser({ headless, storageStatePath }) {
   const browser = await chromium.launch({ headless: Boolean(headless) });
-  const context = await browser.newContext();
+  const contextOptions = {};
+  if (storageStatePath) {
+    contextOptions.storageState = storageStatePath;
+  }
+  const context = await browser.newContext(contextOptions);
   const page = await context.newPage();
   return { browser, context, page };
 }

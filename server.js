@@ -5,6 +5,12 @@ const path = require('path');
 
 const { launchBrowser, closeBrowser } = require('./automation/browserManager');
 const { login } = require('./automation/login');
+const { navigateHome } = require('./automation/home');
+const {
+  hasStorageState,
+  saveStorageState,
+  getStorageStatePath
+} = require('./automation/sessionManager');
 
 dotenv.config();
 
@@ -68,6 +74,35 @@ app.post('/api/session/login', async (req, res) => {
       throw new Error('Missing USERNAME or PASSWORD in .env');
     }
 
+    if (hasStorageState()) {
+      console.log('[login] existing storageState.json found, validating reusable session');
+      const reused = await launchBrowser({
+        headless,
+        storageStatePath: getStorageStatePath()
+      });
+      browser = reused.browser;
+      try {
+        await navigateHome(reused.page, { timeoutMs });
+        await closeBrowser(browser);
+        return res
+          .status(200)
+          .json(
+            buildResponse({
+              success: true,
+              code: 200,
+              message: 'Login successful',
+              data: {},
+              error: null
+            })
+          );
+      } catch (reuseErr) {
+        const reuseMsg = reuseErr instanceof Error ? reuseErr.message : String(reuseErr);
+        console.log(`[login] existing session invalid, continuing with full login: ${reuseMsg}`);
+        await closeBrowser(browser);
+        browser = undefined;
+      }
+    }
+
     const launched = await launchBrowser({ headless });
     browser = launched.browser;
 
@@ -76,6 +111,8 @@ app.post('/api/session/login', async (req, res) => {
       password,
       timeoutMs
     });
+
+    await saveStorageState(launched.context);
 
     await closeBrowser(browser);
 
@@ -103,6 +140,59 @@ app.post('/api/session/login', async (req, res) => {
           success: false,
           code: 401,
           message: 'Login failed',
+          data: null,
+          error: detailed
+        })
+      );
+  }
+});
+
+app.get('/api/session/home', async (req, res) => {
+  const headless = toBool(process.env.HEADLESS, false);
+  const timeoutMs = Number(process.env.TIMEOUT_MS || 30000);
+
+  console.log(`[home] request received headless=${headless} timeoutMs=${timeoutMs}`);
+
+  let browser;
+  try {
+    if (!hasStorageState()) {
+      throw new Error('storageState.json does not exist. Please login first.');
+    }
+
+    const launched = await launchBrowser({
+      headless,
+      storageStatePath: getStorageStatePath()
+    });
+    browser = launched.browser;
+
+    await navigateHome(launched.page, { timeoutMs });
+
+    await closeBrowser(browser);
+
+    return res
+      .status(200)
+      .json(
+        buildResponse({
+          success: true,
+          code: 200,
+          message: 'Navigation successful',
+          data: {},
+          error: null
+        })
+      );
+  } catch (err) {
+    const detailed = err instanceof Error ? err.message : String(err);
+    console.error(`[home] failed: ${detailed}`);
+
+    await closeBrowser(browser);
+
+    return res
+      .status(401)
+      .json(
+        buildResponse({
+          success: false,
+          code: 401,
+          message: 'Session invalid or navigation failed',
           data: null,
           error: detailed
         })
